@@ -226,49 +226,32 @@
         }
         document.getElementById('duration').addEventListener('change', updateTotal);
         
-     function submitBooking() {
-    const startTime = document.getElementById('start-time').value;
-    const duration = document.getElementById('duration').value;
-    
-    if (!startTime) {
-        showError('Выберите дату и время');
-        return;
-    }
-    
-    const start = new Date(startTime);
-    if (start < new Date()) {
-        showError('Дата не может быть в прошлом');
-        return;
-    }
-    
-    const data = {
-        spot_id: selectedSpot,
-        start_time: startTime,
-        duration: parseInt(duration),
-        total: spotPrice * parseInt(duration)
-    };
-    
-    tg.sendData(JSON.stringify(data));
-    
-    // Показываем успех на странице
-    document.getElementById('success-spot').textContent = selectedSpot;
-    document.getElementById('success-time').textContent = duration + ' ч';
-    document.getElementById('success-msg').style.display = 'block';
-    document.getElementById('booking-panel').style.display = 'none';
-
-    // Закрываем WebApp через 1 секунду, чтобы данные ушли
-    setTimeout(() => {
-        tg.close();
-    }, 3000);
-}
-    // Прячем карту, оставляем только сообщение
-    document.querySelector('.map-container').style.display = 'none';
-    document.querySelector('.legend').style.display = 'none';
-    
-    // Меняем заголовок
-    document.querySelector('.header h1').textContent = '✅ Готово!';
-    document.querySelector('.header p').textContent = 'Вернитесь в чат с ботом';
-}
+        function submitBooking() {
+            const startTime = document.getElementById('start-time').value;
+            const duration = document.getElementById('duration').value;
+            if (!startTime) {
+                showError('Выберите дату и время');
+                return;
+            }
+            if (new Date(startTime) < new Date()) {
+                showError('Дата в прошлом');
+                return;
+            }
+            const data = {
+                spot_id: selectedSpot,
+                start_time: startTime,
+                duration: parseInt(duration),
+                total: spotPrice * parseInt(duration)
+            };
+            tg.sendData(JSON.stringify(data));
+            document.getElementById('success-spot').textContent = selectedSpot;
+            document.getElementById('success-time').textContent = duration + ' ч';
+            document.getElementById('success-msg').style.display = 'block';
+            document.getElementById('booking-panel').style.display = 'none';
+            setTimeout(() => {
+                tg.close();
+            }, 3000);
+        }
         
         function cancelBooking() {
             document.getElementById('booking-panel').style.display = 'none';
