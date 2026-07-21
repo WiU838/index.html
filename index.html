@@ -610,6 +610,14 @@
                 duration: parseInt(duration),
                 total: spotPrice * parseInt(duration)
             };
+               // ⬇️ ВСТАВЬ ЭТО:
+    alert('Отправляю: ' + JSON.stringify(data));
+    tg.sendData(JSON.stringify(data));
+    
+    setTimeout(() => {
+        tg.close();
+    }, 2000);
+}
             
             document.getElementById('success-spot').textContent = selectedSpot;
             document.getElementById('success-time').textContent = duration + ' ч';
