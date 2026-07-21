@@ -7,7 +7,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a2e; overflow-x: hidden; -webkit-tap-highlight-color: transparent; padding-bottom: 80px; }
         .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.15); }
         .header h1 { font-size: 18px; font-weight: 700; }
         .header p { font-size: 13px; opacity: 0.9; margin-top: 4px; }
@@ -36,16 +36,13 @@
         .summary-total { display: flex; justify-content: space-between; padding-top: 12px; border-top: 2px solid #d1d5db; margin-top: 8px; }
         .summary-total span:first-child { font-size: 16px; font-weight: 700; color: #1a1a2e; }
         .summary-total span:last-child { font-size: 22px; font-weight: 800; color: #7c3aed; }
-        .btn-group { display: flex; gap: 10px; }
-        .btn-primary { flex: 1; padding: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
-        .btn-primary:active { transform: scale(0.97); }
-        .btn-secondary { padding: 14px 20px; background: #f3f4f6; color: #4b5563; border: none; border-radius: 12px; font-size: 15px; cursor: pointer; font-weight: 600; }
+        .btn-secondary { padding: 14px 20px; background: #f3f4f6; color: #4b5563; border: none; border-radius: 12px; font-size: 15px; cursor: pointer; font-weight: 600; display: block; width: 100%; margin-top: 10px; }
         .success-msg { display: none; margin: 12px; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 2px solid #86efac; border-radius: 16px; padding: 24px; text-align: center; animation: popIn 0.4s ease; }
         @keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
         .success-icon { font-size: 48px; margin-bottom: 8px; }
         .success-title { font-weight: 700; font-size: 18px; color: #166534; }
         .success-desc { font-size: 14px; color: #15803d; margin-top: 6px; }
-        .error-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px); background: #ef4444; color: white; padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 20px rgba(239,68,68,0.3); transition: transform 0.3s ease; z-index: 200; white-space: nowrap; }
+        .error-toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(100px); background: #ef4444; color: white; padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 20px rgba(239,68,68,0.3); transition: transform 0.3s ease; z-index: 200; white-space: nowrap; }
         .error-toast.show { transform: translateX(-50%) translateY(0); }
         .section-label { fill: #6b7280; font-size: 11px; font-weight: 700; text-anchor: middle; }
         .road-label { fill: #9ca3af; font-size: 10px; text-anchor: middle; }
@@ -162,10 +159,7 @@
             <div class="summary-row"><span>Цена за час</span><span id="summary-price">—</span></div>
             <div class="summary-total"><span>Итого</span><span id="summary-total">— ₽</span></div>
         </div>
-        <div class="btn-group">
-            <button class="btn-primary" onclick="submitBooking()">✅ Забронировать</button>
-            <button class="btn-secondary" onclick="cancelBooking()">Отмена</button>
-        </div>
+        <button class="btn-secondary" onclick="cancelBooking()">❌ Отменить выбор</button>
     </div>
     
     <div class="success-msg" id="success-msg">
@@ -218,17 +212,29 @@
             document.getElementById('summary-price').textContent = price + ' ₽';
             updateTotal();
             document.getElementById('booking-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            
+            // ⬇️ ПОКАЗЫВАЕМ НАТИВНУЮ КНОПКУ TELEGRAM
+            tg.MainButton.setText('✅ Забронировать ' + id + ' — ' + (price * parseInt(document.getElementById('duration').value)) + ' ₽');
+            tg.MainButton.setParams({ color: '#7c3aed', text_color: '#ffffff' });
+            tg.MainButton.show();
         }
         
         function updateTotal() {
             const d = parseInt(document.getElementById('duration').value) || 1;
-            document.getElementById('summary-total').textContent = (spotPrice * d).toLocaleString('ru-RU') + ' ₽';
+            const total = spotPrice * d;
+            document.getElementById('summary-total').textContent = total.toLocaleString('ru-RU') + ' ₽';
+            if (selectedSpot) {
+                tg.MainButton.setText('✅ Забронировать ' + selectedSpot + ' — ' + total + ' ₽');
+            }
         }
         document.getElementById('duration').addEventListener('change', updateTotal);
+        document.getElementById('start-time').addEventListener('change', updateTotal);
         
-        function submitBooking() {
+        // ⬇️ ОБРАБОТКА НАЖАТИЯ НА НАТИВНУЮ КНОПКУ TELEGRAM (это гарантированно работает)
+        tg.MainButton.onClick(function() {
             const startTime = document.getElementById('start-time').value;
             const duration = document.getElementById('duration').value;
+            
             if (!startTime) {
                 showError('Выберите дату и время');
                 return;
@@ -237,26 +243,35 @@
                 showError('Дата в прошлом');
                 return;
             }
+            
             const data = {
                 spot_id: selectedSpot,
                 start_time: startTime,
                 duration: parseInt(duration),
                 total: spotPrice * parseInt(duration)
             };
+            
+            // Отправляем данные в бота (работает ТОЛЬКО с MainButton)
             tg.sendData(JSON.stringify(data));
+            
+            // Показываем успех
             document.getElementById('success-spot').textContent = selectedSpot;
             document.getElementById('success-time').textContent = duration + ' ч';
             document.getElementById('success-msg').style.display = 'block';
             document.getElementById('booking-panel').style.display = 'none';
+            tg.MainButton.hide();
+            
+            // Закрываем через 1 секунду
             setTimeout(() => {
                 tg.close();
-            }, 3000);
-        }
+            }, 1000);
+        });
         
         function cancelBooking() {
             document.getElementById('booking-panel').style.display = 'none';
             document.querySelectorAll('.spot').forEach(s => s.classList.remove('selected'));
             selectedSpot = null;
+            tg.MainButton.hide();
         }
     </script>
 </body>
