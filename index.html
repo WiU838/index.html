@@ -255,7 +255,12 @@
     document.getElementById('success-time').textContent = duration + ' ч';
     document.getElementById('success-msg').style.display = 'block';
     document.getElementById('booking-panel').style.display = 'none';
-    
+
+    // Закрываем WebApp через 1 секунду, чтобы данные ушли
+    setTimeout(() => {
+        tg.close();
+    }, 1000);
+}
     // Прячем карту, оставляем только сообщение
     document.querySelector('.map-container').style.display = 'none';
     document.querySelector('.legend').style.display = 'none';
