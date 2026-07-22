@@ -1,833 +1,94 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Карта парковки</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f0f2f5;
-            color: #1a1a2e;
-            overflow-x: hidden;
-            -webkit-tap-highlight-color: transparent;
-            padding-bottom: 40px;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 16px;
-            text-align: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-        }
-        .header h1 { font-size: 18px; font-weight: 700; }
-        .header p { font-size: 13px; opacity: 0.9; margin-top: 4px; }
-        
-        .legend {
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            padding: 10px;
-            background: white;
-            border-bottom: 1px solid #e5e7eb;
-            flex-wrap: wrap;
-        }
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            color: #4b5563;
-        }
-        .legend-box {
-            width: 16px; height: 16px;
-            border-radius: 4px;
-            border: 2px solid;
-        }
-        
-        .loader {
-            text-align: center;
-            padding: 20px;
-            color: #6b7280;
-            font-size: 14px;
-        }
-        .loader.hidden { display: none; }
-        
-        .map-container {
-            background: white;
-            margin: 12px;
-            border-radius: 16px;
-            padding: 12px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-            overflow-x: auto;
-            position: relative;
-        }
-        .map-container svg {
-            width: 100%;
-            min-width: 700px;
-            height: auto;
-            display: block;
-        }
-        
-        .spot {
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .spot:hover .spot-rect {
-            filter: brightness(1.15);
-            transform: scale(1.05);
-            transform-origin: center;
-        }
-        .spot-rect {
-            transition: all 0.2s ease;
-        }
-        .spot.selected .spot-rect {
-            fill: #60a5fa !important;
-            stroke: #3b82f6 !important;
-            stroke-width: 3 !important;
-        }
-        .spot.occupied {
-            cursor: not-allowed;
-            opacity: 0.85;
-        }
-        .spot.occupied:hover .spot-rect {
-            transform: none;
-            filter: none;
-        }
-        
-        .booking-panel {
-            display: none;
-            margin: 12px;
-            background: white;
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-            animation: slideUp 0.3s ease;
-        }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .booking-panel h3 {
-            font-size: 18px;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .spot-badge {
-            background: #7c3aed;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            font-weight: 600;
-        }
-        
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        @media (max-width: 480px) {
-            .form-row { grid-template-columns: 1fr; }
-        }
-        .form-group label {
-            display: block;
-            font-size: 13px;
-            color: #6b7280;
-            margin-bottom: 6px;
-            font-weight: 500;
-        }
-        .form-group input,
-        .form-group select {
-            width: 100%;
-            padding: 12px;
-            border: 1.5px solid #e5e7eb;
-            border-radius: 10px;
-            font-size: 15px;
-            background: #f9fafb;
-            transition: border-color 0.2s;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        .form-group input:focus,
-        .form-group select:focus {
-            outline: none;
-            border-color: #7c3aed;
-            background: white;
-        }
-        
-        .summary-box {
-            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        .summary-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-        .summary-row span:first-child { color: #6b7280; }
-        .summary-row span:last-child { font-weight: 600; color: #1a1a2e; }
-        .summary-total {
-            display: flex;
-            justify-content: space-between;
-            padding-top: 12px;
-            border-top: 2px solid #d1d5db;
-            margin-top: 8px;
-        }
-        .summary-total span:first-child {
-            font-size: 16px;
-            font-weight: 700;
-            color: #1a1a2e;
-        }
-        .summary-total span:last-child {
-            font-size: 22px;
-            font-weight: 800;
-            color: #7c3aed;
-        }
-        
-        .btn-group {
-            display: flex;
-            gap: 10px;
-        }
-        .btn-primary {
-            flex: 1;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-        .btn-primary:active { transform: scale(0.97); }
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .btn-secondary {
-            padding: 14px 20px;
-            background: #f3f4f6;
-            color: #4b5563;
-            border: none;
-            border-radius: 12px;
-            font-size: 15px;
-            cursor: pointer;
-            font-weight: 600;
-        }
-        
-        .success-msg {
-            display: none;
-            margin: 12px;
-            background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-            border: 2px solid #86efac;
-            border-radius: 16px;
-            padding: 24px;
-            text-align: center;
-            animation: popIn 0.4s ease;
-        }
-        @keyframes popIn {
-            from { opacity: 0; transform: scale(0.9); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        .success-icon { font-size: 48px; margin-bottom: 8px; }
-        .success-title { font-weight: 700; font-size: 18px; color: #166534; }
-        .success-desc { font-size: 14px; color: #15803d; margin-top: 6px; }
-        
-        .error-toast {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%) translateY(100px);
-            background: #ef4444;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 12px;
-            font-weight: 600;
-            font-size: 14px;
-            box-shadow: 0 4px 20px rgba(239,68,68,0.3);
-            transition: transform 0.3s ease;
-            z-index: 200;
-            white-space: nowrap;
-        }
-        .error-toast.show { transform: translateX(-50%) translateY(0); }
-        
-        .section-label {
-            fill: #6b7280;
-            font-size: 11px;
-            font-weight: 700;
-            text-anchor: middle;
-        }
-        .road-label {
-            fill: #9ca3af;
-            font-size: 10px;
-            text-anchor: middle;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🅿️ Центральная парковка</h1>
-        <p>Выберите свободное место и время</p>
-    </div>
-    
-    <div class="legend">
-        <div class="legend-item">
-            <div class="legend-box" style="background:#4ade80;border-color:#22c55e;"></div>
-            <span>Свободно</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-box" style="background:#f87171;border-color:#ef4444;"></div>
-            <span>Занято</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-box" style="background:#fbbf24;border-color:#f59e0b;"></div>
-            <span>VIP</span>
-        </div>
-        <div class="legend-item">
-            <div class="legend-box" style="background:#60a5fa;border-color:#3b82f6;"></div>
-            <span>Выбрано</span>
-        </div>
-    </div>
-    
-    <div class="loader" id="loader">⏳ Загрузка карты...</div>
-    
-    <div class="map-container" id="map-container" style="display:none;">
-        <svg viewBox="0 0 860 520">
-            <!-- Фон парковки -->
-            <rect x="20" y="60" width="820" height="420" fill="#e5e7eb" stroke="#9ca3af" stroke-width="2" rx="8"/>
-            
-            <!-- Зелёный забор -->
-            <rect x="20" y="60" width="820" height="6" fill="#22c55e"/>
-            <rect x="20" y="474" width="820" height="6" fill="#22c55e"/>
-            <rect x="20" y="60" width="6" height="420" fill="#22c55e"/>
-            <rect x="834" y="60" width="6" height="420" fill="#22c55e"/>
-            
-            <!-- Дорога сверху -->
-            <rect x="0" y="0" width="860" height="50" fill="#d1d5db"/>
-            <line x1="0" y1="25" x2="860" y2="25" stroke="white" stroke-width="2" stroke-dasharray="20,15"/>
-            <rect x="120" y="8" width="36" height="18" fill="#fbbf24" rx="3"/>
-            <rect x="680" y="28" width="36" height="18" fill="#f97316" rx="3"/>
-            <rect x="420" y="8" width="36" height="18" fill="#3b82f6" rx="3"/>
-            
-            <!-- Павильон охраны (левый) -->
-            <rect x="40" y="75" width="70" height="50" fill="#374151" rx="4"/>
-            <text x="75" y="105" text-anchor="middle" fill="white" font-size="10" font-weight="bold">ОХРАНА</text>
-            
-            <!-- Павильон охраны (правый) -->
-            <rect x="750" y="75" width="70" height="50" fill="#374151" rx="4"/>
-            <text x="785" y="105" text-anchor="middle" fill="white" font-size="10" font-weight="bold">ОХРАНА</text>
-            
-            <!-- Административный комплекс (низ) -->
-            <rect x="300" y="420" width="260" height="50" fill="#7c3aed" rx="4"/>
-            <text x="430" y="450" text-anchor="middle" fill="white" font-size="12" font-weight="bold">АДМИНИСТРАТИВНЫЙ КОМПЛЕКС</text>
-            
-            <!-- Шлагбаумы -->
-            <rect x="150" y="58" width="8" height="30" fill="#dc2626"/>
-            <rect x="350" y="58" width="8" height="30" fill="#dc2626"/>
-            <rect x="550" y="58" width="8" height="30" fill="#dc2626"/>
-            
-            <!-- === РЯД А (параллельная парковка) === -->
-            <text x="430" y="148" class="section-label">РЯД А — Параллельная парковка</text>
-            
-            <g class="spot" data-id="A1" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="130" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="152" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A1</text>
-            </g>
-            <g class="spot" data-id="A2" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="185" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="207" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A2</text>
-            </g>
-            <g class="spot" data-id="A3" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="240" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="262" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A3</text>
-            </g>
-            <g class="spot" data-id="A4" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="295" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="317" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A4</text>
-            </g>
-            <g class="spot" data-id="A5" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="350" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="372" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A5</text>
-            </g>
-            <g class="spot" data-id="A6" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="405" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="427" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A6</text>
-            </g>
-            <g class="spot" data-id="A7" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="460" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="482" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A7</text>
-            </g>
-            <g class="spot" data-id="A8" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="515" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="537" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A8</text>
-            </g>
-            <g class="spot" data-id="A9" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="570" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="592" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A9</text>
-            </g>
-            <g class="spot" data-id="A10" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="625" y="155" width="45" height="28" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="647" y="173" text-anchor="middle" fill="#166534" font-size="11" font-weight="bold">A10</text>
-            </g>
-            
-            <!-- Проезд 1 -->
-            <rect x="130" y="190" width="540" height="20" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
-            <text x="400" y="204" class="road-label">← ПРОЕЗД →</text>
-            
-            <!-- === РЯД Б (перпендикулярно) === -->
-            <text x="120" y="248" class="section-label">РЯД Б</text>
-            
-            <g class="spot" data-id="B1" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="70" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="84" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B1</text>
-            </g>
-            <g class="spot" data-id="B2" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="70" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="84" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B2</text>
-            </g>
-            <g class="spot" data-id="B3" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="110" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="124" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B3</text>
-            </g>
-            <g class="spot" data-id="B4" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="110" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="124" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B4</text>
-            </g>
-            <g class="spot" data-id="B5" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="170" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="184" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B5</text>
-            </g>
-            <g class="spot" data-id="B6" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="170" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="184" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B6</text>
-            </g>
-            <g class="spot" data-id="B7" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="210" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="224" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B7</text>
-            </g>
-            <g class="spot" data-id="B8" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="210" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="224" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B8</text>
-            </g>
-            <g class="spot" data-id="B9" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="250" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="264" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B9</text>
-            </g>
-            <g class="spot" data-id="B10" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="250" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="264" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B10</text>
-            </g>
-            <g class="spot" data-id="B11" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="370" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="384" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B11</text>
-            </g>
-            <g class="spot" data-id="B12" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="370" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="384" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B12</text>
-            </g>
-            <g class="spot" data-id="B13" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="410" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="424" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B13</text>
-            </g>
-            <g class="spot" data-id="B14" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="410" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="424" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B14</text>
-            </g>
-            <g class="spot" data-id="B15" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="520" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="534" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B15</text>
-            </g>
-            <g class="spot" data-id="B16" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="520" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="534" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B16</text>
-            </g>
-            <g class="spot" data-id="B17" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="560" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="574" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B17</text>
-            </g>
-            <g class="spot" data-id="B18" data-price="120" data-type="regular" onclick="selectSpot(this)">
-                <rect x="560" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="574" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">B18</text>
-            </g>
-            
-            <!-- Проезд 2 -->
-            <rect x="70" y="365" width="520" height="18" fill="#f3f4f6" stroke="#d1d5db" stroke-width="1"/>
-            <text x="330" y="377" class="road-label">← ПРОЕЗД →</text>
-            
-            <!-- === НИЖНИЙ РЯД === -->
-            <text x="430" y="405" class="section-label">РЯД В — У административного комплекса</text>
-            
-            <g class="spot" data-id="V1" data-price="200" data-type="vip" onclick="selectSpot(this)">
-                <rect x="180" y="415" width="32" height="48" fill="#fbbf24" stroke="#f59e0b" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="196" y="445" text-anchor="middle" fill="#92400e" font-size="10" font-weight="bold">V1</text>
-            </g>
-            <g class="spot" data-id="V2" data-price="200" data-type="vip" onclick="selectSpot(this)">
-                <rect x="225" y="415" width="32" height="48" fill="#fbbf24" stroke="#f59e0b" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="241" y="445" text-anchor="middle" fill="#92400e" font-size="10" font-weight="bold">V2</text>
-            </g>
-            <g class="spot" data-id="V3" data-price="200" data-type="vip" onclick="selectSpot(this)">
-                <rect x="270" y="415" width="32" height="48" fill="#fbbf24" stroke="#f59e0b" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="286" y="445" text-anchor="middle" fill="#92400e" font-size="10" font-weight="bold">V3</text>
-            </g>
-            <g class="spot" data-id="V4" data-price="200" data-type="vip" onclick="selectSpot(this)">
-                <rect x="315" y="415" width="32" height="48" fill="#fbbf24" stroke="#f59e0b" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="331" y="445" text-anchor="middle" fill="#92400e" font-size="10" font-weight="bold">V4</text>
-            </g>
-            <g class="spot" data-id="C1" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="370" y="415" width="32" height="48" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="386" y="445" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">C1</text>
-            </g>
-            <g class="spot" data-id="C2" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="415" y="415" width="32" height="48" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="431" y="445" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">C2</text>
-            </g>
-            <g class="spot" data-id="C3" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="460" y="415" width="32" height="48" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="476" y="445" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">C3</text>
-            </g>
-            <g class="spot" data-id="C4" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="505" y="415" width="32" height="48" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="521" y="445" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">C4</text>
-            </g>
-            <g class="spot" data-id="C5" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="550" y="415" width="32" height="48" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="566" y="445" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">C5</text>
-            </g>
-            <g class="spot" data-id="C6" data-price="100" data-type="regular" onclick="selectSpot(this)">
-                <rect x="595" y="415" width="32" height="48" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="611" y="445" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">C6</text>
-            </g>
-            
-            <!-- Правая боковая секция -->
-            <text x="720" y="248" class="section-label">РЯД D</text>
-            
-            <g class="spot" data-id="D1" data-price="130" data-type="regular" onclick="selectSpot(this)">
-                <rect x="680" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="694" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">D1</text>
-            </g>
-            <g class="spot" data-id="D2" data-price="130" data-type="regular" onclick="selectSpot(this)">
-                <rect x="680" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="694" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">D2</text>
-            </g>
-            <g class="spot" data-id="D3" data-price="130" data-type="regular" onclick="selectSpot(this)">
-                <rect x="720" y="255" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="734" y="282" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">D3</text>
-            </g>
-            <g class="spot" data-id="D4" data-price="130" data-type="regular" onclick="selectSpot(this)">
-                <rect x="720" y="310" width="28" height="45" fill="#4ade80" stroke="#22c55e" stroke-width="2" rx="3" class="spot-rect"/>
-                <text x="734" y="337" text-anchor="middle" fill="#166534" font-size="10" font-weight="bold">D4</text>
-            </g>
-        </svg>
-    </div>
-    
-    <div class="booking-panel" id="booking-panel">
-        <h3>📋 Бронирование <span class="spot-badge" id="selected-spot-id"></span></h3>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label>📅 Дата и время начала</label>
-                <input type="datetime-local" id="start-time">
-            </div>
-            <div class="form-group">
-                <label>⏱ Длительность</label>
-                <select id="duration">
-                    <option value="1">1 час</option>
-                    <option value="2">2 часа</option>
-                    <option value="3">3 часа</option>
-                    <option value="4">4 часа</option>
-                    <option value="5">5 часов</option>
-                    <option value="6">6 часов</option>
-                    <option value="8">8 часов</option>
-                    <option value="12">12 часов</option>
-                    <option value="24">24 часа</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="summary-box">
-            <div class="summary-row">
-                <span>Место</span>
-                <span id="summary-spot">—</span>
-            </div>
-            <div class="summary-row">
-                <span>Тип</span>
-                <span id="summary-type">—</span>
-            </div>
-            <div class="summary-row">
-                <span>Цена за час</span>
-                <span id="summary-price">—</span>
-            </div>
-            <div class="summary-total">
-                <span>Итого</span>
-                <span id="summary-total">— ₽</span>
-            </div>
-        </div>
-        
-        <div class="btn-group">
-            <button class="btn-primary" id="submit-btn" onclick="submitBooking()">✅ Забронировать</button>
-            <button class="btn-secondary" onclick="cancelBooking()">Отмена</button>
-        </div>
-    </div>
-    
-    <div class="success-msg" id="success-msg">
-        <div class="success-icon">🎉</div>
-        <div class="success-title">Бронирование создано!</div>
-        <div class="success-desc">
-            Место <span id="success-spot"></span> забронировано на <span id="success-time"></span>
-        </div>
-    </div>
-    
-    <div class="error-toast" id="error-toast"></div>
+"""Оплата бронирования.
 
-    <script>
-        // ============================================
-        // ИНИЦИАЛИЗАЦИЯ TELEGRAM WEBAPP
-        // ============================================
-        let tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        tg.setHeaderColor('#667eea');
-        tg.setBackgroundColor('#f0f2f5');
-        
-        // ============================================
-        // ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
-        // ============================================
-        let selectedSpot = null;
-        let spotPrice = 0;
-        
-        // ============================================
-        // НАСТРОЙКА ПОЛЯ ДАТЫ/ВРЕМЕНИ
-        // ============================================
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        const minDateTime = now.toISOString().slice(0, 16);
-        
-        const startTimeInput = document.getElementById('start-time');
-        startTimeInput.min = minDateTime;
-        startTimeInput.value = minDateTime;
-        
-        // При изменении даты — обновляем занятость мест
-       startTimeInput.addEventListener('change', async () => {
-    await loadSpotStatus();
-    // Если выбранное место стало занятым — снимаем выделение
-    if (selectedSpot) {
-        const spotEl = document.querySelector(`.spot[data-id="${selectedSpot}"]`);
-        if (spotEl && spotEl.classList.contains('occupied')) {
-            showError('🔴 Выбранное место занято на новое время');
-            cancelBooking();
-        }
-    }
-})
-        
-        // ============================================
-        // ПОКАЗ ОШИБОК
-        // ============================================
-        function showError(msg) {
-            const toast = document.getElementById('error-toast');
-            toast.textContent = msg;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-        
-     
-        
-        const API_BASE_URL = 'http://localhost:8000'; 
-        
-        async function loadSpotStatus() {
-            const startTime = document.getElementById('start-time').value;
-            const duration = document.getElementById('duration').value;
-            
-            if (!startTime) return;
-            
-            // Показываем лоадер
-            document.getElementById('loader').textContent = '⏳ Проверка занятости...';
-            document.getElementById('loader').classList.remove('hidden');
-            document.getElementById('map-container').style.display = 'none';
-            
-            let statusMap = {};
-            
-            // Пытаемся получить реальные данные с сервера
-            if (API_BASE_URL) {
-                try {
-                    const url = `${API_BASE_URL}/api/spots/status?start_time=${encodeURIComponent(startTime)}&duration=${duration}`;
-                    const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-                    if (response.ok) {
-                        statusMap = await response.json();
-                    }
-                } catch (e) {
-                    console.warn('API недоступен, используем fallback:', e);
-                }
-            }
-            
-            // Применяем статусы к местам на карте
-            document.querySelectorAll('.spot').forEach(spot => {
-                const spotId = spot.dataset.id;
-                const rect = spot.querySelector('.spot-rect');
-                const type = spot.dataset.type;
-                
-                // Сбрасываем классы
-                spot.classList.remove('occupied', 'selected');
-                
-                // Определяем статус
-                const status = statusMap[spotId] || 'free';
-                
-                if (status === 'occupied') {
-                    spot.classList.add('occupied');
-                    rect.setAttribute('fill', '#f87171');
-                    rect.setAttribute('stroke', '#ef4444');
-                } else {
-                    // Возвращаем цвет в зависимости от типа
-                    if (type === 'vip') {
-                        rect.setAttribute('fill', '#fbbf24');
-                        rect.setAttribute('stroke', '#f59e0b');
-                    } else {
-                        rect.setAttribute('fill', '#4ade80');
-                        rect.setAttribute('stroke', '#22c55e');
-                    }
-                }
-            });
-            
-            // Прячем лоадер, показываем карту
-            document.getElementById('loader').classList.add('hidden');
-            document.getElementById('map-container').style.display = 'block';
-        }
-        
-        // ============================================
-        // ВЫБОР МЕСТА
-        // ============================================
-        function selectSpot(element) {
-            const spotId = element.dataset.id;
-            const price = parseInt(element.dataset.price);
-            const type = element.dataset.type;
-            const rect = element.querySelector('.spot-rect');
-            
-            // Проверяем, не занято ли место
-            if (element.classList.contains('occupied')) {
-                showError('🔴 Это место уже занято на выбранное время!');
-                return;
-            }
-            
-            // Снимаем выделение со всех мест
-            document.querySelectorAll('.spot').forEach(s => s.classList.remove('selected'));
-            
-            // Запоминаем выбор
-            selectedSpot = spotId;
-            spotPrice = price;
-            element.classList.add('selected');
-            
-            // Показываем панель бронирования
-            document.getElementById('booking-panel').style.display = 'block';
-            document.getElementById('success-msg').style.display = 'none';
-            document.getElementById('selected-spot-id').textContent = spotId;
-            document.getElementById('summary-spot').textContent = spotId;
-            document.getElementById('summary-type').textContent = type === 'vip' ? 'VIP' : 'Обычное';
-            document.getElementById('summary-price').textContent = price + ' ₽';
-            
-            updateTotal();
-            
-            // Прокручиваем к панели
-            setTimeout(() => {
-                document.getElementById('booking-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }, 100);
-        }
-        
-        // ============================================
-        // ОБНОВЛЕНИЕ СУММЫ
-        // ============================================
-        function updateTotal() {
-            const duration = parseInt(document.getElementById('duration').value) || 1;
-            const total = spotPrice * duration;
-            document.getElementById('summary-total').textContent = total.toLocaleString('ru-RU') + ' ₽';
-        }
-        
-        document.getElementById('duration').addEventListener('change', () => {
-            updateTotal();
-            if (selectedSpot) {
-                cancelBooking();
-                loadSpotStatus(); // Перепроверяем занятость при смене длительности
-            }
-        });
-        
-        // ============================================
-        // ОТПРАВКА БРОНИРОВАНИЯ В БОТ
-        // ============================================
-        function submitBooking() {
-            const startTime = document.getElementById('start-time').value;
-            const duration = document.getElementById('duration').value;
-            const btn = document.getElementById('submit-btn');
-            
-            if (!startTime) {
-                showError('Выберите дату и время');
-                return;
-            }
-            
-            const start = new Date(startTime);
-            const nowCheck = new Date();
-            nowCheck.setMinutes(nowCheck.getMinutes() - 1); // небольшой запас
-            
-            if (start < nowCheck) {
-                showError('Дата не может быть в прошлом');
-                return;
-            }
-            
-            // Блокируем кнопку
-            btn.disabled = true;
-            btn.textContent = '⏳ Отправка...';
-            
-            const data = {
-                spot_id: selectedSpot,
-                start_time: startTime,
-                duration: parseInt(duration),
-                total: spotPrice * parseInt(duration)
-            };
-            
-            console.log('>>> Отправка данных в бот:', data);
-            
-            // Отправляем данные в Telegram
-            tg.sendData(JSON.stringify(data));
-            
-            // ✅ КРИТИЧЕСКИ ВАЖНО: даём WebApp время отправить данные
-            // перед закрытием. Иначе данные могут не дойти!
-            setTimeout(() => {
-                tg.close();
-            }, 500);
-        }
-        
-        // ============================================
-        // ОТМЕНА ВЫБОРА
-        // ============================================
-        function cancelBooking() {
-            document.getElementById('booking-panel').style.display = 'none';
-            document.querySelectorAll('.spot').forEach(s => s.classList.remove('selected'));
-            selectedSpot = null;
-            
-            // Разблокируем кнопку
-            const btn = document.getElementById('submit-btn');
-            btn.disabled = false;
-            btn.textContent = '✅ Забронировать';
-        }
-        
-        // ============================================
-        // СТАРТ
-        // ============================================
-        // Загружаем статусы мест при открытии
-        loadSpotStatus();
-    </script>
-</body>
-</html>
+Реальной интеграции со Сбербанком нет (SBER_MERCHANT_LOGIN/PASSWORD не заданы),
+поэтому оплата — тестовая заглушка: сразу создаёт успешный Payment и переводит
+бронирование в статус PAID. Когда появятся боевые реквизиты Сбер Эквайринга,
+здесь нужно будет создавать платёжную форму вместо мгновенного подтверждения.
+"""
+import logging
+from aiogram import Router, F
+from aiogram.types import CallbackQuery
+from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
+
+from core.models import User, Booking, BookingStatus, Payment, PaymentStatus, AsyncSessionLocal
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+
+@router.callback_query(F.data.startswith("pay_booking_"))
+async def pay_booking(callback: CallbackQuery):
+    booking_id = int(callback.data.removeprefix("pay_booking_"))
+
+    async with AsyncSessionLocal() as db:
+        user = (await db.execute(
+            select(User).where(User.telegram_id == callback.from_user.id)
+        )).scalar_one_or_none()
+
+        booking = (await db.execute(
+            select(Booking)
+            .where(Booking.id == booking_id)
+            .options(selectinload(Booking.spot))
+        )).scalar_one_or_none()
+
+        if not booking or not user or booking.user_id != user.id:
+            await callback.answer("Бронирование не найдено", show_alert=True)
+            return
+
+        if booking.status != BookingStatus.PENDING:
+            await callback.answer("Это бронирование уже оплачено или отменено", show_alert=True)
+            return
+
+        # Место могло уйти к другому платёжеспособному клиенту, пока это
+        # бронирование висело неоплаченным — перепроверяем перед оплатой.
+        conflict = (await db.execute(
+            select(Booking).where(
+                and_(
+                    Booking.id != booking.id,
+                    Booking.spot_id == booking.spot_id,
+                    Booking.status.in_([
+                        BookingStatus.PAID,
+                        BookingStatus.CONFIRMED,
+                        BookingStatus.ACTIVE,
+                    ]),
+                    Booking.start_time < booking.end_time,
+                    Booking.end_time > booking.start_time,
+                )
+            )
+        )).scalar_one_or_none()
+
+        if conflict:
+            booking.status = BookingStatus.CANCELLED
+            await db.commit()
+            await callback.answer(
+                "К сожалению, место заняли раньше вас. Бронирование отменено.",
+                show_alert=True
+            )
+            return
+
+        db.add(Payment(
+            booking_id=booking.id,
+            amount=booking.total_amount,
+            currency="RUB",
+            status=PaymentStatus.SUCCESS,
+            description="Тестовая оплата (SBER_TEST_MODE)",
+        ))
+        booking.status = BookingStatus.PAID
+        await db.commit()
+
+        spot_number = booking.spot.spot_number if booking.spot else f"ID:{booking.spot_id}"
+        total_amount = booking.total_amount
+        booking_number = booking.id
+
+    logger.info("Booking %s paid", booking_number)
+
+    await callback.message.edit_text(
+        f"✅ *Оплата прошла успешно!*\n\n"
+        f"🅿️ Место: *{spot_number}*\n"
+        f"💰 Сумма: *{total_amount}₽*\n"
+        f"Статус: *Оплачено*\n\n"
+        f"Бронирование #{booking_number} подтверждено.",
+        parse_mode="Markdown"
+    )
+    await callback.answer("Оплата прошла успешно ✅")
