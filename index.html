@@ -1,94 +1,719 @@
-"""Оплата бронирования.
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Карта парковки</title>
+    <style>
+        :root {
+            --bg: #f0f1f5;
+            --surface: #ffffff;
+            --surface-alt: #f6f7fa;
+            --border: #e2e5eb;
+            --ink: #1b1e25;
+            --muted: #636b79;
+            --accent: #5b4bd6;
+            --free: #2f9e58;
+            --free-bg: #e9f7ee;
+            --occupied: #d6484a;
+            --occupied-bg: #fceceb;
+            --selected: #5b4bd6;
+            --selected-bg: #ece9fc;
+            --vip: #d98c0a;
+            --vip-bg: #fdecc8;
+            --map-surface: #e9ebf1;
+            --pathway: #dfe2ea;
+            --shadow: 0 24px 60px rgba(30, 41, 71, 0.10);
+            --success-bg: linear-gradient(160deg, #baf3d2, #dcf8e7);
+            --success-ink: #14532d;
+            color-scheme: light;
+        }
 
-Реальной интеграции со Сбербанком нет (SBER_MERCHANT_LOGIN/PASSWORD не заданы),
-поэтому оплата — тестовая заглушка: сразу создаёт успешный Payment и переводит
-бронирование в статус PAID. Когда появятся боевые реквизиты Сбер Эквайринга,
-здесь нужно будет создавать платёжную форму вместо мгновенного подтверждения.
-"""
-import logging
-from aiogram import Router, F
-from aiogram.types import CallbackQuery
-from sqlalchemy import select, and_
-from sqlalchemy.orm import selectinload
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #14161b;
+                --surface: #1c1f27;
+                --surface-alt: #23262f;
+                --border: #323642;
+                --ink: #edeef2;
+                --muted: #99a0b0;
+                --accent: #8b7cf6;
+                --free: #57c684;
+                --free-bg: rgba(87, 198, 132, 0.14);
+                --occupied: #ff7171;
+                --occupied-bg: rgba(255, 113, 113, 0.14);
+                --selected: #8b7cf6;
+                --selected-bg: rgba(139, 124, 246, 0.16);
+                --vip: #ffb84d;
+                --vip-bg: rgba(255, 184, 77, 0.16);
+                --map-surface: #1f222b;
+                --pathway: #282c37;
+                --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+                --success-bg: linear-gradient(160deg, #163a26, #1b4a30);
+                --success-ink: #8ff0b5;
+                color-scheme: dark;
+            }
+        }
 
-from core.models import User, Booking, BookingStatus, Payment, PaymentStatus, AsyncSessionLocal
+        :root[data-theme="dark"] {
+            --bg: #14161b; --surface: #1c1f27; --surface-alt: #23262f; --border: #323642;
+            --ink: #edeef2; --muted: #99a0b0; --accent: #8b7cf6;
+            --free: #57c684; --free-bg: rgba(87, 198, 132, 0.14);
+            --occupied: #ff7171; --occupied-bg: rgba(255, 113, 113, 0.14);
+            --selected: #8b7cf6; --selected-bg: rgba(139, 124, 246, 0.16);
+            --vip: #ffb84d; --vip-bg: rgba(255, 184, 77, 0.16);
+            --map-surface: #1f222b; --pathway: #282c37;
+            --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+            --success-bg: linear-gradient(160deg, #163a26, #1b4a30); --success-ink: #8ff0b5;
+            color-scheme: dark;
+        }
 
-logger = logging.getLogger(__name__)
-router = Router()
+        :root[data-theme="light"] {
+            --bg: #f0f1f5; --surface: #ffffff; --surface-alt: #f6f7fa; --border: #e2e5eb;
+            --ink: #1b1e25; --muted: #636b79; --accent: #5b4bd6;
+            --free: #2f9e58; --free-bg: #e9f7ee;
+            --occupied: #d6484a; --occupied-bg: #fceceb;
+            --selected: #5b4bd6; --selected-bg: #ece9fc;
+            --vip: #d98c0a; --vip-bg: #fdecc8;
+            --map-surface: #e9ebf1; --pathway: #dfe2ea;
+            --shadow: 0 24px 60px rgba(30, 41, 71, 0.10);
+            --success-bg: linear-gradient(160deg, #baf3d2, #dcf8e7); --success-ink: #14532d;
+            color-scheme: light;
+        }
 
+        * { box-sizing: border-box; }
 
-@router.callback_query(F.data.startswith("pay_booking_"))
-async def pay_booking(callback: CallbackQuery):
-    booking_id = int(callback.data.removeprefix("pay_booking_"))
+        html, body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            transition: background-color .2s ease, color .2s ease;
+        }
 
-    async with AsyncSessionLocal() as db:
-        user = (await db.execute(
-            select(User).where(User.telegram_id == callback.from_user.id)
-        )).scalar_one_or_none()
+        .app-header {
+            background: linear-gradient(120deg, #4f6ef7, #8b5cf6);
+            padding: 22px 24px;
+            color: #fff;
+        }
+        .brand { display: flex; align-items: center; gap: 14px; max-width: 1200px; margin: 0 auto; }
+        .brand-badge {
+            flex: none;
+            width: 40px; height: 40px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.22);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 1.15rem;
+            border: 1px solid rgba(255,255,255,0.35);
+        }
+        .app-header h1 {
+            margin: 0;
+            font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+            font-weight: 800;
+            letter-spacing: -0.01em;
+        }
+        .app-header p {
+            margin: 4px 0 0;
+            font-size: 0.88rem;
+            opacity: 0.92;
+            transition: opacity .2s ease;
+        }
 
-        booking = (await db.execute(
-            select(Booking)
-            .where(Booking.id == booking_id)
-            .options(selectinload(Booking.spot))
-        )).scalar_one_or_none()
+        main {
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto 32px;
+            padding: 20px 24px 24px;
+            align-items: start;
+        }
 
-        if not booking or not user or booking.user_id != user.id:
-            await callback.answer("Бронирование не найдено", show_alert=True)
-            return
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 22px;
+            box-shadow: var(--shadow);
+            padding: 22px;
+        }
 
-        if booking.status != BookingStatus.PENDING:
-            await callback.answer("Это бронирование уже оплачено или отменено", show_alert=True)
-            return
+        .panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .panel-head h2 { margin: 0; font-size: 1.1rem; font-weight: 800; }
+        .legend { display: flex; gap: 12px; font-size: 0.76rem; color: var(--muted); flex-wrap: wrap; }
+        .legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+        .legend i.free { background: var(--free); }
+        .legend i.occupied { background: var(--occupied); }
+        .legend i.selected { background: var(--selected); }
+        .legend i.vip { background: var(--vip); }
 
-        # Место могло уйти к другому платёжеспособному клиенту, пока это
-        # бронирование висело неоплаченным — перепроверяем перед оплатой.
-        conflict = (await db.execute(
-            select(Booking).where(
-                and_(
-                    Booking.id != booking.id,
-                    Booking.spot_id == booking.spot_id,
-                    Booking.status.in_([
-                        BookingStatus.PAID,
-                        BookingStatus.CONFIRMED,
-                        BookingStatus.ACTIVE,
-                    ]),
-                    Booking.start_time < booking.end_time,
-                    Booking.end_time > booking.start_time,
-                )
-            )
-        )).scalar_one_or_none()
+        .map-scroll { overflow-x: auto; border-radius: 18px; }
+        .map-card {
+            display: block;
+            width: 100%;
+            height: auto;
+            min-width: 640px;
+            border-radius: 18px;
+            background: var(--map-surface);
+            border: 3px solid var(--free);
+        }
+        .pathway { fill: var(--pathway); }
+        .zone-label {
+            fill: var(--muted);
+            font-size: 13px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .roadway-label { fill: var(--muted); font-size: 12px; font-weight: 600; }
 
-        if conflict:
-            booking.status = BookingStatus.CANCELLED
-            await db.commit()
-            await callback.answer(
-                "К сожалению, место заняли раньше вас. Бронирование отменено.",
-                show_alert=True
-            )
-            return
+        .spot {
+            cursor: pointer;
+            fill: var(--free-bg);
+            stroke: var(--free);
+            stroke-width: 1.6;
+            transition: transform .15s ease, fill .15s ease, stroke .15s ease, stroke-width .15s ease;
+        }
+        .spot:hover { transform: translateY(-2px); }
+        .spot.vip { fill: var(--vip-bg); stroke: var(--vip); }
+        .spot.selected { fill: var(--selected-bg); stroke: var(--selected); stroke-width: 2.4; }
+        .spot.occupied { fill: var(--occupied-bg); stroke: var(--occupied); cursor: not-allowed; }
+        .spot.occupied:hover { transform: none; }
+        .spot text { pointer-events: none; fill: var(--ink); font-weight: 800; }
+        .spot .price-label { font-size: 8.5px; font-weight: 600; fill: var(--muted); }
 
-        db.add(Payment(
-            booking_id=booking.id,
-            amount=booking.total_amount,
-            currency="RUB",
-            status=PaymentStatus.SUCCESS,
-            description="Тестовая оплата (SBER_TEST_MODE)",
-        ))
-        booking.status = BookingStatus.PAID
-        await db.commit()
+        .hint {
+            margin-top: 16px;
+            padding: 13px 15px;
+            border-radius: 14px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
 
-        spot_number = booking.spot.spot_number if booking.spot else f"ID:{booking.spot_id}"
-        total_amount = booking.total_amount
-        booking_number = booking.id
+        .spot-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 12px;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 800;
+            font-size: 0.85rem;
+            letter-spacing: 0.02em;
+        }
 
-    logger.info("Booking %s paid", booking_number)
+        .receipt { display: flex; flex-direction: column; gap: 14px; }
 
-    await callback.message.edit_text(
-        f"✅ *Оплата прошла успешно!*\n\n"
-        f"🅿️ Место: *{spot_number}*\n"
-        f"💰 Сумма: *{total_amount}₽*\n"
-        f"Статус: *Оплачено*\n\n"
-        f"Бронирование #{booking_number} подтверждено.",
-        parse_mode="Markdown"
-    )
-    await callback.answer("Оплата прошла успешно ✅")
+        .field label {
+            display: block;
+            margin-bottom: 7px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--muted);
+        }
+        .field input, .field select {
+            width: 100%;
+            padding: 12px 13px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            background: var(--surface-alt);
+            color: var(--ink);
+            font-size: 0.96rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+        .field input:focus, .field select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+        }
+
+        .ticket-divider { border-top: 1.5px dashed var(--border); margin: 2px 0; }
+
+        .price-rows { display: flex; flex-direction: column; gap: 9px; }
+        .price-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; color: var(--muted); }
+        .price-row .value { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+        .price-row.total { font-size: 1.02rem; font-weight: 800; color: var(--ink); }
+        .price-row.total .value {
+            font-size: 1.25rem; font-weight: 800; color: var(--accent);
+            background: var(--selected-bg); padding: 2px 10px; border-radius: 8px;
+        }
+
+        .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 2px; }
+        .actions-row { display: flex; gap: 10px; }
+        button {
+            padding: 14px 16px;
+            border: none;
+            border-radius: 14px;
+            font-size: 0.96rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: transform .12s ease, opacity .12s ease;
+        }
+        button:active:not(:disabled) { transform: scale(0.98); }
+        button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+        .btn-primary {
+            flex: 2;
+            background: linear-gradient(120deg, #4f6ef7, #8b5cf6);
+            color: #fff;
+        }
+        .btn-secondary { flex: 1; background: var(--surface-alt); color: var(--ink); border: 1px solid var(--border); }
+        .btn-ghost { width: 100%; background: var(--surface-alt); color: var(--ink); border: 1px solid var(--border); }
+
+        .status-message {
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 0.86rem;
+            line-height: 1.5;
+        }
+        .status-message.ok { color: var(--free); border-color: color-mix(in srgb, var(--free) 40%, var(--border)); }
+        .status-message.err { color: var(--occupied); border-color: color-mix(in srgb, var(--occupied) 40%, var(--border)); }
+
+        .success-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 50;
+        }
+        .success-overlay[hidden] { display: none; }
+        .success-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--success-bg);
+            color: var(--success-ink);
+            border-radius: 24px;
+            padding: 40px 28px;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+        .success-emoji { font-size: 2.6rem; margin-bottom: 10px; }
+        .success-card h2 { margin: 0 0 8px; font-size: 1.25rem; font-weight: 800; }
+        .success-card p { margin: 0; font-size: 0.95rem; opacity: 0.9; }
+
+        @media (max-width: 940px) {
+            main { grid-template-columns: 1fr; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            * { transition: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="brand">
+            <span class="brand-badge">P</span>
+            <div>
+                <h1>Центральная парковка</h1>
+                <p id="headerSubtitle">Нажмите на свободное место, чтобы забронировать</p>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Схема парковки</h2>
+                <div class="legend">
+                    <span><i class="free"></i>Свободно</span>
+                    <span><i class="occupied"></i>Занято</span>
+                    <span><i class="selected"></i>Выбрано</span>
+                    <span><i class="vip"></i>VIP</span>
+                </div>
+            </div>
+
+            <div class="map-scroll">
+                <svg class="map-card" id="parkingMap" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+
+            <div class="hint" id="hintText">Проверяю связь с Telegram…</div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Бронирование</h2>
+                <span class="spot-badge" id="spotBadge">—</span>
+            </div>
+
+            <div class="receipt">
+                <div class="field">
+                    <label for="startTime">Дата и время начала</label>
+                    <input id="startTime" type="datetime-local" />
+                </div>
+
+                <div class="field">
+                    <label for="duration">Длительность</label>
+                    <select id="duration">
+                        <option value="1">1 час</option>
+                        <option value="2">2 часа</option>
+                        <option value="3">3 часа</option>
+                        <option value="4">4 часа</option>
+                        <option value="5">5 часов</option>
+                        <option value="6">6 часов</option>
+                    </select>
+                </div>
+
+                <div class="ticket-divider"></div>
+
+                <div class="price-rows">
+                    <div class="price-row"><span>Место</span><span class="value" id="rowSpot">—</span></div>
+                    <div class="price-row"><span>Тип</span><span class="value" id="rowType">—</span></div>
+                    <div class="price-row"><span>Тариф</span><span class="value" id="rowPrice">—</span></div>
+                    <div class="price-row total"><span>Итого</span><span class="value" id="totalAmount">—</span></div>
+                </div>
+
+                <div class="actions">
+                    <button type="button" class="btn-ghost" id="refreshButton">Проверить доступность</button>
+                    <div class="actions-row">
+                        <button type="button" class="btn-primary" id="sendButton" disabled>✅ Забронировать</button>
+                        <button type="button" class="btn-secondary" id="cancelButton">Отмена</button>
+                    </div>
+                </div>
+
+                <div class="status-message" id="statusMessage">Сначала выберите место на карте.</div>
+            </div>
+        </section>
+    </main>
+
+    <div class="success-overlay" id="successOverlay" hidden>
+        <div class="success-card">
+            <div class="success-emoji">🎉</div>
+            <h2>Бронирование создано!</h2>
+            <p id="successDetail">Место забронировано.</p>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // Данные мест. Раскладка и цены должны совпадать с seed_data.py.
+        // ============================================================
+        const TYPE_LABELS = { regular: 'Обычное', vip: 'VIP' };
+
+        function makeRow(ids, group, subrowByIndex, colByIndex, price, type) {
+            return ids.map((id, i) => ({
+                id, group,
+                col: typeof colByIndex === 'function' ? colByIndex(i) : colByIndex[i],
+                subrow: typeof subrowByIndex === 'function' ? subrowByIndex(i) : (subrowByIndex[i] || 0),
+                price, type,
+            }));
+        }
+
+        const ZONE_A_IDS = ['A1','A2','A3','A4','A5','A6','A7','A8','A9','A10'];
+        const ZONE_A = makeRow(ZONE_A_IDS, 'A', () => 0, (i) => i, 100, 'regular');
+
+        // Кластеры Б: пары колонок [top, bottom], разделённые пустыми колонками.
+        const BD_PAIRS = [
+            ['B1','B2', 0], ['B3','B4', 1],
+            ['B5','B6', 3], ['B7','B8', 4], ['B9','B10', 5],
+            ['B11','B12', 7], ['B13','B14', 8],
+            ['B15','B16', 10], ['B17','B18', 11],
+            ['D1','D2', 14], ['D3','D4', 15],
+        ];
+        const ZONE_BD = [];
+        for (const [topId, bottomId, col] of BD_PAIRS) {
+            const isD = topId.startsWith('D');
+            ZONE_BD.push({ id: topId, group: 'BD', col, subrow: 0, price: isD ? 110 : 90, type: 'regular' });
+            ZONE_BD.push({ id: bottomId, group: 'BD', col, subrow: 1, price: isD ? 110 : 90, type: 'regular' });
+        }
+
+        const ZONE_VC_IDS = ['V1','V2','V3','V4', null, 'C1','C2','C3','C4','C5','C6'];
+        const ZONE_VC = ZONE_VC_IDS
+            .map((id, col) => id ? { id, group: 'VC', col, subrow: 0,
+                price: id.startsWith('V') ? 200 : 120,
+                type: id.startsWith('V') ? 'vip' : 'regular' } : null)
+            .filter(Boolean);
+
+        const SPOT_DEFS = [...ZONE_A, ...ZONE_BD, ...ZONE_VC];
+        const SPOT_MAP = Object.fromEntries(SPOT_DEFS.map((s) => [s.id, s]));
+
+        // ============================================================
+        // Геометрия карты
+        // ============================================================
+        const CELL_W = 62, BOX_W = 52, BOX_H = 56;
+        const PAD_X = 34, LABEL_GAP = 28, SUBROW_GAP = 8;
+        const ROADWAY_H = 30, ZONE_GAP = 24, ROADWAY_MARGIN = 20, TOP_PAD = 30, BOTTOM_PAD = 30;
+
+        const A_COLS = 10, BD_COLS = 16, VC_COLS = 11;
+        const CONTENT_W = Math.max(A_COLS, BD_COLS, VC_COLS) * CELL_W;
+        const SVG_W = PAD_X * 2 + CONTENT_W;
+
+        const rowAY = TOP_PAD;
+        const roadway1Y = rowAY + LABEL_GAP + BOX_H + ROADWAY_MARGIN;
+        const rowBDY = roadway1Y + ROADWAY_H + ROADWAY_MARGIN;
+        const rowBDHeight = BOX_H * 2 + SUBROW_GAP;
+        const roadway2Y = rowBDY + LABEL_GAP + rowBDHeight + ROADWAY_MARGIN;
+        const rowVCY = roadway2Y + ROADWAY_H + ROADWAY_MARGIN;
+        const SVG_H = rowVCY + LABEL_GAP + BOX_H + BOTTOM_PAD;
+
+        function groupY(group) {
+            if (group === 'A') return rowAY;
+            if (group === 'BD') return rowBDY;
+            return rowVCY;
+        }
+
+        function spotXY(spot) {
+            const x = PAD_X + spot.col * CELL_W;
+            const y = groupY(spot.group) + LABEL_GAP + spot.subrow * (BOX_H + SUBROW_GAP);
+            return { x, y };
+        }
+
+        const svgNS = 'http://www.w3.org/2000/svg';
+        function el(tag, attrs, text) {
+            const node = document.createElementNS(svgNS, tag);
+            for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+            if (text !== undefined) node.textContent = text;
+            return node;
+        }
+
+        function buildMap() {
+            const svg = document.getElementById('parkingMap');
+            svg.setAttribute('viewBox', `0 0 ${SVG_W} ${SVG_H}`);
+            svg.innerHTML = '';
+
+            // Проезды
+            svg.appendChild(el('rect', { x: PAD_X - 10, y: roadway1Y, width: CONTENT_W + 20, height: ROADWAY_H, rx: 10, class: 'pathway' }));
+            svg.appendChild(el('text', { x: SVG_W / 2, y: roadway1Y + ROADWAY_H / 2 + 4, class: 'roadway-label', 'text-anchor': 'middle' }, '← ПРОЕЗД →'));
+            svg.appendChild(el('rect', { x: PAD_X - 10, y: roadway2Y, width: CONTENT_W + 20, height: ROADWAY_H, rx: 10, class: 'pathway' }));
+            svg.appendChild(el('text', { x: SVG_W / 2, y: roadway2Y + ROADWAY_H / 2 + 4, class: 'roadway-label', 'text-anchor': 'middle' }, '← ПРОЕЗД →'));
+
+            // Подписи зон
+            svg.appendChild(el('text', {
+                x: PAD_X + (A_COLS * CELL_W) / 2, y: rowAY + 16, class: 'zone-label', 'text-anchor': 'middle',
+            }, 'РЯД А — Параллельная парковка'));
+            svg.appendChild(el('text', { x: PAD_X, y: rowBDY + 16, class: 'zone-label', 'text-anchor': 'start' }, 'РЯД Б'));
+            svg.appendChild(el('text', {
+                x: PAD_X + 14 * CELL_W + CELL_W, y: rowBDY + 16, class: 'zone-label', 'text-anchor': 'middle',
+            }, 'РЯД D'));
+            svg.appendChild(el('text', {
+                x: PAD_X + (VC_COLS * CELL_W) / 2, y: rowVCY + 16, class: 'zone-label', 'text-anchor': 'middle',
+            }, 'РЯД В — У административного комплекса'));
+
+            // Места
+            for (const spot of SPOT_DEFS) {
+                const { x, y } = spotXY(spot);
+                const g = el('g', { class: `spot${spot.type === 'vip' ? ' vip' : ''}`, id: `spot-${spot.id}`, 'data-spot': spot.id });
+                g.appendChild(el('rect', { x, y, width: BOX_W, height: BOX_H, rx: 12 }));
+                g.appendChild(el('text', { x: x + BOX_W / 2, y: y + 26, 'text-anchor': 'middle', 'font-size': 14 }, spot.id));
+                g.appendChild(el('text', { x: x + BOX_W / 2, y: y + 42, class: 'price-label', 'text-anchor': 'middle' }, `${spot.price}₽/ч`));
+                g.addEventListener('click', () => selectSpot(spot.id));
+                svg.appendChild(g);
+            }
+        }
+
+        // ============================================================
+        // Состояние и логика бронирования
+        // ============================================================
+        const root = document.documentElement;
+        const headerSubtitle = document.getElementById('headerSubtitle');
+        const spotBadge = document.getElementById('spotBadge');
+        const rowSpot = document.getElementById('rowSpot');
+        const rowType = document.getElementById('rowType');
+        const rowPrice = document.getElementById('rowPrice');
+        const totalAmount = document.getElementById('totalAmount');
+        const statusMessage = document.getElementById('statusMessage');
+        const refreshButton = document.getElementById('refreshButton');
+        const sendButton = document.getElementById('sendButton');
+        const cancelButton = document.getElementById('cancelButton');
+        const startTimeInput = document.getElementById('startTime');
+        const durationSelect = document.getElementById('duration');
+        const hintText = document.getElementById('hintText');
+        const successOverlay = document.getElementById('successOverlay');
+        const successDetail = document.getElementById('successDetail');
+
+        let selectedSpot = null;
+        let spotStatuses = {};
+        let webApp = null;
+
+        function syncTelegramTheme() {
+            if (!webApp) return;
+            root.setAttribute('data-theme', webApp.colorScheme === 'dark' ? 'dark' : 'light');
+        }
+
+        function initTelegram() {
+            if (!window.Telegram || !window.Telegram.WebApp) return false;
+            webApp = window.Telegram.WebApp;
+            webApp.ready();
+            webApp.expand();
+            syncTelegramTheme();
+            if (typeof webApp.onEvent === 'function') {
+                webApp.onEvent('themeChanged', syncTelegramTheme);
+            }
+            hintText.textContent = 'Нажмите на свободное место на схеме, чтобы выбрать его.';
+            return true;
+        }
+
+        function isTelegramContext() { return webApp !== null; }
+
+        function setStatusMessage(text, kind) {
+            statusMessage.textContent = text;
+            statusMessage.classList.remove('ok', 'err');
+            if (kind) statusMessage.classList.add(kind);
+        }
+
+        function updateTotal() {
+            if (!selectedSpot) {
+                spotBadge.textContent = '—';
+                rowSpot.textContent = '—';
+                rowType.textContent = '—';
+                rowPrice.textContent = '—';
+                totalAmount.textContent = '—';
+                sendButton.disabled = true;
+                return 0;
+            }
+            const def = SPOT_MAP[selectedSpot];
+            const duration = Number(durationSelect.value);
+            spotBadge.textContent = selectedSpot;
+            rowSpot.textContent = selectedSpot;
+            rowType.textContent = TYPE_LABELS[def.type] || def.type;
+            rowPrice.textContent = `${def.price} ₽/ч`;
+            const total = duration * def.price;
+            totalAmount.textContent = `${total} ₽`;
+            sendButton.disabled = !isTelegramContext() || spotStatuses[selectedSpot] === 'occupied';
+            return total;
+        }
+
+        function selectSpot(spotId) {
+            if (spotStatuses[spotId] === 'occupied') {
+                setStatusMessage(`Место ${spotId} уже занято на выбранное время. Выберите другое.`, 'err');
+                return;
+            }
+            selectedSpot = spotId;
+            document.querySelectorAll('.spot').forEach((group) => {
+                group.classList.toggle('selected', group.dataset.spot === spotId);
+            });
+            setStatusMessage(`Место ${spotId} выбрано. Проверьте время и нажмите «Забронировать».`);
+            updateTotal();
+        }
+
+        function deselectSpot() {
+            selectedSpot = null;
+            document.querySelectorAll('.spot').forEach((group) => group.classList.remove('selected'));
+            setStatusMessage('Сначала выберите место на карте.');
+            updateTotal();
+        }
+
+        function applyStatusMap(statusMap) {
+            document.querySelectorAll('.spot').forEach((group) => {
+                const spotId = group.dataset.spot;
+                const status = statusMap[spotId] || 'free';
+                spotStatuses[spotId] = status;
+                group.classList.toggle('occupied', status === 'occupied');
+                if (status === 'occupied' && selectedSpot === spotId) {
+                    group.classList.remove('selected');
+                    selectedSpot = null;
+                }
+            });
+            updateTotal();
+        }
+
+        async function refreshStatus() {
+            const startTime = startTimeInput.value;
+            const duration = Number(durationSelect.value);
+            if (!startTime) {
+                setStatusMessage('Введите дату и время начала.');
+                return;
+            }
+            setStatusMessage('Загружаю доступность мест…');
+            try {
+                const query = new URLSearchParams({ start_time: startTime, duration: String(duration) });
+                const response = await fetch(`/api/spots/status?${query.toString()}`);
+                if (!response.ok) throw new Error('сервер вернул ошибку');
+                const statusMap = await response.json();
+                applyStatusMap(statusMap);
+                setStatusMessage('Статус обновлён. Выберите место и нажмите «Забронировать».', 'ok');
+            } catch (error) {
+                setStatusMessage(`Не удалось проверить доступность: ${error.message}`, 'err');
+            }
+        }
+
+        async function sendBooking() {
+            if (!selectedSpot) {
+                setStatusMessage('Сначала выберите место на карте.');
+                return;
+            }
+            const startTime = startTimeInput.value;
+            const duration = Number(durationSelect.value);
+            if (!startTime) {
+                setStatusMessage('Введите дату и время начала.');
+                return;
+            }
+            if (!isTelegramContext()) {
+                setStatusMessage('Откройте эту страницу через кнопку «Карта парковки» в Telegram.', 'err');
+                return;
+            }
+
+            sendButton.disabled = true;
+            setStatusMessage('Проверяю, что место всё ещё свободно…');
+
+            // Финальная проверка перед отправкой — место могли забронировать,
+            // пока пользователь заполнял форму.
+            try {
+                const query = new URLSearchParams({ start_time: startTime, duration: String(duration) });
+                const response = await fetch(`/api/spots/status?${query.toString()}`);
+                const statusMap = await response.json();
+                applyStatusMap(statusMap);
+                if (statusMap[selectedSpot] === 'occupied') {
+                    setStatusMessage(`Место ${selectedSpot} уже заняли. Выберите другое.`, 'err');
+                    return;
+                }
+            } catch (error) {
+                setStatusMessage(`Не удалось проверить доступность: ${error.message}`, 'err');
+                sendButton.disabled = false;
+                return;
+            }
+
+            const spotId = selectedSpot;
+            successDetail.textContent = `Место ${spotId} забронировано на ${duration} ч`;
+            headerSubtitle.textContent = 'Вернитесь в чат с ботом';
+            successOverlay.hidden = false;
+
+            setTimeout(() => {
+                webApp.sendData(JSON.stringify({ spot_id: spotId, start_time: startTime, duration }));
+            }, 1400);
+        }
+
+        refreshButton.addEventListener('click', refreshStatus);
+        sendButton.addEventListener('click', sendBooking);
+        cancelButton.addEventListener('click', deselectSpot);
+        durationSelect.addEventListener('change', () => { updateTotal(); refreshStatus(); });
+        startTimeInput.addEventListener('change', refreshStatus);
+
+        function init() {
+            buildMap();
+
+            const now = new Date();
+            now.setMinutes(0, 0, 0);
+            startTimeInput.value = now.toISOString().slice(0, 16);
+            updateTotal();
+
+            const hasTelegram = initTelegram();
+            if (!hasTelegram) {
+                hintText.textContent = 'Откройте эту страницу через кнопку «Карта парковки» в Telegram, чтобы забронировать место.';
+                setStatusMessage('Бронирование доступно только внутри Telegram.', 'err');
+            }
+
+            refreshStatus();
+        }
+
+        init();
+    </script>
+</body>
+</html>
