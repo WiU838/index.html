@@ -623,10 +623,17 @@
         startTimeInput.value = minDateTime;
         
         // При изменении даты — обновляем занятость мест
-        startTimeInput.addEventListener('change', () => {
-            if (selectedSpot) cancelBooking();
-            loadSpotStatus();
-        });
+       startTimeInput.addEventListener('change', async () => {
+    await loadSpotStatus();
+    // Если выбранное место стало занятым — снимаем выделение
+    if (selectedSpot) {
+        const spotEl = document.querySelector(`.spot[data-id="${selectedSpot}"]`);
+        if (spotEl && spotEl.classList.contains('occupied')) {
+            showError('🔴 Выбранное место занято на новое время');
+            cancelBooking();
+        }
+    }
+})
         
         // ============================================
         // ПОКАЗ ОШИБОК
@@ -638,18 +645,7 @@
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
         
-        // ============================================
-        // ЗАГРУЗКА СТАТУСОВ МЕСТ (занято/свободно)
-        // ============================================
-        // 
-        // ⚠️ ВАЖНО: Чтобы карта показывала РЕАЛЬНУЮ занятость из БД,
-        // создай API endpoint на своём сервере, например:
-        // GET /api/spots/status?start_time=2026-07-22T14:00&duration=2
-        // 
-        // Ответ должен быть JSON: {"A1":"free","A3":"occupied","B4":"occupied",...}
-        //
-        // Если API недоступен — используется fallback (все места свободны).
-        // ============================================
+     
         
         const API_BASE_URL = 'http://localhost:8000'; 
         
